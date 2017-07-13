@@ -39,11 +39,15 @@ function startup(Cesium) {
   navigator.getVRDisplays().then(function(displays) {
     if (displays.length > 0) {
       vrDisplay = displays[0];
+      window.vrDisplay = vrDisplay;
     }
   });
 
   // create the Cesium viewer
   var viewer = new Cesium.Viewer('cesiumContainer', { vrButton : true });
+
+  window.cesiumVR = viewer.vrButton.viewModel;
+  console.log('Cesium VR Enabled: ' + window.cesiumVR.isVREnabled);
 
   // Click the VR button in the bottom right of the screen to switch to VR mode.
   viewer.scene.globe.enableLighting = true;
