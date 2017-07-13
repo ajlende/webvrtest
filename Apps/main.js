@@ -72,12 +72,14 @@ function startup(Cesium) {
   var frameData = new VRFrameData();
 
   viewer.scene.preRender.addEventListener(function(scene, time) {
+    if (!vrDisplay || !vrDisplay.getFrameData) return;
+
     var position = entity.position.getValue(time);
 
     vrDisplay.getFrameData(frameData);
 
     var pose = frameData.pose;
-    var ori = curFramePose.orientation;
+    var ori = pose.orientation;
 
     if (!Cesium.defined(position)) {
       return;
