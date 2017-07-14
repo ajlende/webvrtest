@@ -3,24 +3,15 @@ function startup(Cesium) {
   'use strict';
 
   // create the Cesium viewer
-  var viewer = new Cesium.Viewer('cesiumContainer', { vrButton : true });
+  var viewer = new Cesium.Viewer('cesiumContainer', { vrButton: true, useDefaultRenderLoop: false });
   var webglCanvas = viewer.canvas;
 
-  var button = viewer.vrButton;
-  window.cesiumVR = vrButton.viewModel;
-  console.log('Cesium VR Enabled: ' + window.cesiumVR.isVREnabled);
-  button.addEventListener('click', onVRRequestPresent);
+  var vrButton = viewer.vrButton;
+  var cesiumVR = window.cesiumVR = vrButton.viewModel;
+  console.log('Cesium VR Enabled: ' + cesiumVR.isVREnabled);
+  vrButton.container.addEventListener('click', onVRRequestPresent);
 
-
-  // assume we have a valid VR display
   var vrDisplay = window;
-  // navigator.getVRDisplays().then(function (displays) {
-  //   if (displays.length > 0) {
-  //     vrDisplay = displays[0];
-  //     window.vrDisplay = vrDisplay;
-  //   }
-  // });
-
   if (navigator.getVRDisplays) {
     frameData = new VRFrameData();
     navigator.getVRDisplays().then(function (displays) {
@@ -28,7 +19,7 @@ function startup(Cesium) {
         vrDisplay = displays[displays.length - 1];
         window.vrDisplay = vrDisplay;
 
-        // It's heighly reccommended that you set the near and far planes to
+        // It's highly reccommended that you set the near and far planes to
         // something appropriate for your scene so the projection matricies
         // WebVR produces have a well scaled depth buffer.
         vrDisplay.depthNear = 0.1;
@@ -79,7 +70,7 @@ function startup(Cesium) {
 
   function onVRRequestPresent() {
     // This can only be called in response to a user gesture.
-    vrDisplay.requestPresent([{ source: webglCanvas }])
+    return vrDisplay.requestPresent([{ source: webglCanvas }])
       .catch(function (err) {
         var errMsg = "requestPresent failed.";
         // if (err && err.message) {
@@ -94,9 +85,9 @@ function startup(Cesium) {
     // No sense in exiting presentation if we're not actually presenting.
     // (This may happen if we get an event like vrdisplaydeactivate when
     // we weren't presenting.)
-    if (!vrDisplay.isPresenting) return;
+    if (!vrDisplay.isPresenting) return Promise.resolve('Not presenting');
 
-    vrDisplay.exitPresent()
+    return vrDisplay.exitPresent()
       .catch(function (err) {
         var errMsg = "exitPresent failed.";
         // if (err && err.message) {
@@ -171,6 +162,14 @@ function startup(Cesium) {
   // }
   // webglCanvas.addEventListener("click", onClick, false);
 
+  function onAnimationFrame(t) {
+    if (vrDisplay) {
+      vrDisplay.requestAnimationFrame(onAnimationFrame);
+      viewer.render();
+    }
+  }
+  vrDisplay.requestAnimationFrame(onAnimationFrame);
+
   // function onAnimationFrame (t) {
   //   stats.begin();
   //   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -237,100 +236,107 @@ function startup(Cesium) {
     // location: "location"
     // });
     // return an Entity with the mil2525 symbol
-    return new Cesium.Entity({
-      position: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
-      point: {
-        color: Cesium.Color.RED,
-      }
-    })
+
+    // return new Cesium.Entity({
+    //   position: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
     // billboard: new Cesium.BillboardGraphics({
     //     image: sym.getMarker().asCanvas(),
     //     show: true,
     //     scale: 1.2,
     //     width: 240.0,
     //     height: 80.0 })
-    // })
-}
+    // });
 
-// Click the VR button in the bottom right of the screen to switch to VR mode.
-viewer.scene.globe.enableLighting = true;
-viewer.terrainProvider = new Cesium.CesiumTerrainProvider({
-  url : '//assets.agi.com/stk-terrain/world',
-  requestVertexNormals : true
-});
-
-viewer.scene.globe.depthTestAgainstTerrain = true;
-
-// initial location Sydney
-var longitude = 151.2093;
-var latitude = -33.8688;
-var altitude = 200.0;
-
-var entity = viewer.entities.add(milEntityAt(longitude, latitude, altitude));
-viewer.flyTo(entity);
-
-// Set initial camera position and orientation to be in the model's reference frame.
-var camera = viewer.camera;
-camera.position = new Cesium.Cartesian3(0.25, 0.0, 0.0);
-camera.direction = new Cesium.Cartesian3(1.0, 0.0, 0.0);
-camera.up = new Cesium.Cartesian3(0.0, 0.0, 1.0);
-camera.right = new Cesium.Cartesian3(0.0, -1.0, 0.0);
-
-var frameData = new VRFrameData();
-
-viewer.scene.preRender.addEventListener(function(scene, time) {
-  if (!vrDisplay || !vrDisplay.getFrameData) return;
-
-  var position = entity.position.getValue(time);
-
-  vrDisplay.getFrameData(frameData);
-
-  var pose = frameData.pose;
-  var ori = pose.orientation;
-
-  if (!Cesium.defined(position)) {
-    return;
+    return new Cesium.Entity({
+      position: Cesium.Cartesian3.fromDegrees(lng, lat, alt),
+      point: {
+        color: Cesium.Color.RED,
+        pixelSize: 10,
+      }
+    });
   }
 
-  // the tricky bit
-  var transform;
-  var q;
-  if (Cesium.defined(ori)) {
-    if (ori[0] == 0 && ori[1] == 0 && ori[2] == 0 && ori[3] == 0) {
-      q = Cesium.Quaternion.IDENTITY;
+  // Click the VR button in the bottom right of the screen to switch to VR mode.
+  viewer.scene.globe.enableLighting = true;
+  viewer.terrainProvider = new Cesium.CesiumTerrainProvider({
+    url : '//assets.agi.com/stk-terrain/world',
+    requestVertexNormals : true
+  });
+
+  viewer.scene.globe.depthTestAgainstTerrain = true;
+
+  // initial location Sydney
+  var longitude = 151.2093;
+  var latitude = -33.8688;
+  var altitude = 200.0;
+
+  var entity = viewer.entities.add(milEntityAt(longitude, latitude, altitude));
+  viewer.flyTo(entity);
+
+  // Set initial camera position and orientation to be in the model's reference frame.
+  var camera = viewer.camera;
+  camera.position = new Cesium.Cartesian3(0.25, 0.0, 0.0);
+  camera.direction = new Cesium.Cartesian3(1.0, 0.0, 0.0);
+  camera.up = new Cesium.Cartesian3(0.0, 0.0, 1.0);
+  camera.right = new Cesium.Cartesian3(0.0, -1.0, 0.0);
+
+  var frameData = new VRFrameData();
+
+  function preRenderForVR(scene, time) {
+    if (!vrDisplay || !vrDisplay.getFrameData) return;
+
+    var position = entity.position.getValue(time);
+
+    vrDisplay.getFrameData(frameData);
+
+    var pose = frameData.pose;
+    var ori = pose.orientation;
+
+    if (!Cesium.defined(position)) {
+      return;
     }
-    else {
-      q = new Cesium.Quaternion(ori[0], ori[1], ori[2], ori[3]);
+
+    // the tricky bit
+    var transform;
+    var q;
+    if (Cesium.defined(ori)) {
+      if (ori[0] == 0 && ori[1] == 0 && ori[2] == 0 && ori[3] == 0) {
+        q = Cesium.Quaternion.IDENTITY;
+      }
+      else {
+        q = new Cesium.Quaternion(ori[0], ori[1], ori[2], ori[3]);
+      }
+      transform = Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromQuaternion(q), position);
+    } else {
+      transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
     }
-    transform = Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromQuaternion(q), position);
-  } else {
-    transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+
+    // Save the camera state
+    var offset = Cesium.Cartesian3.clone(camera.position);
+    var direction = Cesium.Cartesian3.clone(camera.direction);
+    var up = Cesium.Cartesian3.clone(camera.up);
+
+    // Set camera to be in model's reference frame.
+    camera.lookAtTransform(transform);
+
+    // Reset the camera state to the saved state so it appears fixed in the model's frame.
+    Cesium.Cartesian3.clone(offset, camera.position);
+    Cesium.Cartesian3.clone(direction, camera.direction);
+    Cesium.Cartesian3.clone(up, camera.up);
+    Cesium.Cartesian3.cross(direction, up, camera.right);
   }
 
-  // Save the camera state
-  var offset = Cesium.Cartesian3.clone(camera.position);
-  var direction = Cesium.Cartesian3.clone(camera.direction);
-  var up = Cesium.Cartesian3.clone(camera.up);
+  viewer.scene.preRender.addEventListener(preRenderForVR);
 
-  // Set camera to be in model's reference frame.
-  camera.lookAtTransform(transform);
+  // create a few other symbols nearby to look at
+  Cesium.Math.setRandomNumberSeed(3);
+  for (var i = 0; i < 10; ++i) {
+    var lng = longitude + Cesium.Math.nextRandomNumber()/100.0;
+    var lat = latitude + Cesium.Math.nextRandomNumber()/100.0;
+    viewer.entities.add(milEntityAt(lng, lat, altitude));
+  }
 
-  // Reset the camera state to the saved state so it appears fixed in the model's frame.
-  Cesium.Cartesian3.clone(offset, camera.position);
-  Cesium.Cartesian3.clone(direction, camera.direction);
-  Cesium.Cartesian3.clone(up, camera.up);
-  Cesium.Cartesian3.cross(direction, up, camera.right);
-});
-
-// create a few other symbols nearby to look at
-Cesium.Math.setRandomNumberSeed(3);
-for (var i = 0; i < 10; ++i) {
-  var lng = longitude + Cesium.Math.nextRandomNumber()/100.0;
-  var lat = latitude + Cesium.Math.nextRandomNumber()/100.0;
-  viewer.entities.add(milEntityAt(lng, lat, altitude));
-}
-
-Sandcastle.finishedLoading();
+  Sandcastle.finishedLoading();
 } // end start Cesium
 
 // launch Cesium if available
