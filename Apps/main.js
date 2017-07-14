@@ -4,6 +4,7 @@ function startup(Cesium) {
 
   // create the Cesium viewer
   var viewer = new Cesium.Viewer('cesiumContainer', { vrButton: true, useDefaultRenderLoop: false });
+  var scene = viewer.scene;
   var webglCanvas = viewer.canvas;
 
   var vrButton = viewer.vrButton;
@@ -70,7 +71,12 @@ function startup(Cesium) {
 
   function onVRRequestPresent() {
     // This can only be called in response to a user gesture.
+    if (vrDisplay.isPresenting) return Promise.resolve('Already presenting');
+
     return vrDisplay.requestPresent([{ source: webglCanvas }])
+      .then(function () {
+        scene.useWebVR = true;
+      })
       .catch(function (err) {
         var errMsg = "requestPresent failed.";
         // if (err && err.message) {
@@ -88,6 +94,9 @@ function startup(Cesium) {
     if (!vrDisplay.isPresenting) return Promise.resolve('Not presenting');
 
     return vrDisplay.exitPresent()
+      .then(function () {
+        scene.useWebVR = false;
+      })
       .catch(function (err) {
         var errMsg = "exitPresent failed.";
         // if (err && err.message) {
@@ -162,12 +171,51 @@ function startup(Cesium) {
   // }
   // webglCanvas.addEventListener("click", onClick, false);
 
-  function onAnimationFrame(t) {
-    if (vrDisplay) {
-      vrDisplay.requestAnimationFrame(onAnimationFrame);
-      viewer.render();
-      vrDisplay.submitFrame();
+  // the tricky bit
+  function cameraTransformFromVrDisplay(position, orientation) {
+    if (Cesium.defined(position)) {
+      if (Cesium.defined(orientation)) {
+        var q = new Cesium.Quaternion(orientation[0], orientation[1], orientation[2], orientation[3]);
+        return Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromQuaternion(q), position);
+      } else {
+        return Cesium.Transforms.eastNorthUpToFixedFrame(position);
+      }
+    } else {
+      return Cesium.Matrix4.IDENTITY;
     }
+  }
+
+  function onAnimationFrame() {
+    vrDisplay.requestAnimationFrame(onAnimationFrame);
+
+    var time = viewer.clock.currentTime;
+
+    var position = entity.position.getValue(time);
+
+    vrDisplay.getFrameData(frameData);
+
+    var pose = frameData.pose;
+    var orientation = pose.orientation;
+
+    var transform = cameraTransformFromVrDisplay(position, orientation);
+
+    // Save the camera state
+    var offset = Cesium.Cartesian3.clone(camera.position);
+    var direction = Cesium.Cartesian3.clone(camera.direction);
+    var up = Cesium.Cartesian3.clone(camera.up);
+
+    // Set camera to be in model's reference frame.
+    camera.lookAtTransform(transform);
+
+    // Reset the camera state to the saved state so it appears fixed in the model's frame.
+    Cesium.Cartesian3.clone(offset, camera.position);
+    Cesium.Cartesian3.clone(direction, camera.direction);
+    Cesium.Cartesian3.clone(up, camera.up);
+    Cesium.Cartesian3.cross(direction, up, camera.right);
+
+    viewer.render();
+
+    vrDisplay.submitFrame();
   }
   vrDisplay.requestAnimationFrame(onAnimationFrame);
 
@@ -258,13 +306,13 @@ function startup(Cesium) {
   }
 
   // Click the VR button in the bottom right of the screen to switch to VR mode.
-  viewer.scene.globe.enableLighting = true;
+  scene.globe.enableLighting = true;
   viewer.terrainProvider = new Cesium.CesiumTerrainProvider({
     url : '//assets.agi.com/stk-terrain/world',
     requestVertexNormals : true
   });
 
-  viewer.scene.globe.depthTestAgainstTerrain = true;
+  scene.globe.depthTestAgainstTerrain = true;
 
   // initial location Sydney
   var longitude = 151.2093;
@@ -283,51 +331,52 @@ function startup(Cesium) {
 
   var frameData = new VRFrameData();
 
-  function preRenderForVR(scene, time) {
-    if (!vrDisplay || !vrDisplay.getFrameData) return;
+  // function preRenderForVR(scene, time) {
+  //   if (!vrDisplay || !vrDisplay.getFrameData) return;
 
-    var position = entity.position.getValue(time);
+  //   var position = entity.position.getValue(time);
 
-    vrDisplay.getFrameData(frameData);
+  //   vrDisplay.getFrameData(frameData);
 
-    var pose = frameData.pose;
-    var ori = pose.orientation;
+  //   var pose = frameData.pose;
+  //   var ori = pose.orientation;
 
-    if (!Cesium.defined(position)) {
-      return;
-    }
+  //   if (!Cesium.defined(position)) {
+  //     return;
+  //   }
 
-    // the tricky bit
-    var transform;
-    var q;
-    if (Cesium.defined(ori)) {
-      if (ori[0] == 0 && ori[1] == 0 && ori[2] == 0 && ori[3] == 0) {
-        q = Cesium.Quaternion.IDENTITY;
-      }
-      else {
-        q = new Cesium.Quaternion(ori[0], ori[1], ori[2], ori[3]);
-      }
-      transform = Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromQuaternion(q), position);
-    } else {
-      transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
-    }
+  //   // the tricky bit
+  //   var transform;
+  //   var q;
+  //   if (Cesium.defined(ori)) {
+  //     if (ori[0] == 0 && ori[1] == 0 && ori[2] == 0 && ori[3] == 0) {
+  //       q = Cesium.Quaternion.IDENTITY;
+  //     }
+  //     else {
+  //       q = new Cesium.Quaternion(ori[0], ori[1], ori[2], ori[3]);
+  //     }
+  //     transform = Cesium.Matrix4.fromRotationTranslation(Cesium.Matrix3.fromQuaternion(q), position);
+  //   } else {
+  //     transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+  //   }
 
-    // Save the camera state
-    var offset = Cesium.Cartesian3.clone(camera.position);
-    var direction = Cesium.Cartesian3.clone(camera.direction);
-    var up = Cesium.Cartesian3.clone(camera.up);
+  //   // Save the camera state
+  //   var offset = Cesium.Cartesian3.clone(camera.position);
+  //   var direction = Cesium.Cartesian3.clone(camera.direction);
+  //   var up = Cesium.Cartesian3.clone(camera.up);
 
-    // Set camera to be in model's reference frame.
-    camera.lookAtTransform(transform);
+  //   // Set camera to be in model's reference frame.
+  //   camera.lookAtTransform(transform);
 
-    // Reset the camera state to the saved state so it appears fixed in the model's frame.
-    Cesium.Cartesian3.clone(offset, camera.position);
-    Cesium.Cartesian3.clone(direction, camera.direction);
-    Cesium.Cartesian3.clone(up, camera.up);
-    Cesium.Cartesian3.cross(direction, up, camera.right);
-  }
+  //   // Reset the camera state to the saved state so it appears fixed in the model's frame.
+  //   Cesium.Cartesian3.clone(offset, camera.position);
+  //   Cesium.Cartesian3.clone(direction, camera.direction);
+  //   Cesium.Cartesian3.clone(up, camera.up);
+  //   Cesium.Cartesian3.cross(direction, up, camera.right);
+  // }
 
-  viewer.scene.preRender.addEventListener(preRenderForVR);
+  // viewer.scene.preRender.addEventListener(preRenderForVR);
+  viewer.scene.preRender.addEventListener(console.log.bind(console));
 
   // create a few other symbols nearby to look at
   Cesium.Math.setRandomNumberSeed(3);
