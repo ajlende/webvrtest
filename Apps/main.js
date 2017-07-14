@@ -166,6 +166,7 @@ function startup(Cesium) {
     if (vrDisplay) {
       vrDisplay.requestAnimationFrame(onAnimationFrame);
       viewer.render();
+      vrDisplay.submitFrame();
     }
   }
   vrDisplay.requestAnimationFrame(onAnimationFrame);
